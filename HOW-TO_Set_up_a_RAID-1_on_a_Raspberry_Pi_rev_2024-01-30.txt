@@ -1,0 +1,691 @@
+﻿©2024 Copyright 2024 Robert D. Chin
+Email: RDevChin@Gmail.com
+
+TABLE OF CONTENTS
+1. HOW-TO Create a RAID-1 on a file server (Raspberry Pi 3).
+2. HOW-TO Add a new HDD if old one fails.
+3. How to disassemble a RAID and reuse the storage devices as individual ones.
+
+Disclaimer:
+USE THESE NOTES AT YOUR OWN RISK!
+These notes are from my personal experience and are not guaranteed to work
+on any other RAID set up or file server set up. I am not responsible or
+liable for time wasted, or damages due to following or using this documentation.
+The notes may be incomplete and are specific to my file server software and
+hardware configuration set up only.
+
+=========================================================================
+
+HOW-TO Create a RAID-1 on a file server (Raspberry Pi 3).
+
+=========================================================================
+
+Log in to the Raspberry Pi 3 and do the following:
+
+1. Update/Upgrade the existing software packages.
+      $ sudo apt-get update
+      $ sudo apt-get upgrade
+      $ sudo apt-get dist-upgrade
+
+2. Connect the (2) USB hard disk drives to the Raspberry Pi to be used as a RAID1.
+
+3. List the partition tables for the specified devices and then exit.
+      $ sudo fdisk --list
+
+       Note: OPTION -l, --list List the partition tables.
+
+4. Install software "mdadm" to manage RAID.
+      $ sudo apt-get install mdadm
+
+5. Create the RAID array with 2 HDDs.
+
+$ sudo mdadm --create --verbose /dev/md0 --level=1 --raid-devices=2 /dev/sdb1 /dev/sdc1
+      [sudo] password for robert:
+      mdadm: /dev/sdb1 appears to contain an ext2fs file system
+             size=4883735552K  mtime=Wed Dec 31 19:00:00 1969
+      mdadm: Note: this array has metadata at the start and
+          may not be suitable as a boot device.  If you plan to
+          store '/boot' on this device please ensure that
+          your boot-loader understands md/v1.x metadata, or use
+          --metadata=0.90
+      mdadm: /dev/sdc1 appears to contain an ext2fs file system
+             size=4883735552K  mtime=Wed Dec 31 19:00:00 1969
+      mdadm: size set to 4883603456K
+      mdadm: automatically enabling write-intent bitmap on large array
+      Continue creating array? Y
+
+Note: mdadm OPTION
+            -C --create create array
+            -v --verbose verbose
+            -l --level= Type of RAID.
+                        RAID0 is "--level=0"
+                        RAID1 is "--level=1"
+                        RAID5 is "--level=5"
+            -n --raid-devices= Number devices
+                 i.e. Hard disk drives or solid state drives/devices.
+                 "--raid-devices=2" for RAID-1, "-n3" for RAID-5, “-n5” for RAID-6.
+
+6. List the partition tables for the specified devices and then exit.
+      $ sudo fdisk --list
+       Note: OPTION -l, --list List the partition tables.
+
+7. Report the status of the RAID.
+      $ cat /proc/mdstat
+
+8. Create the linux file system of the RAID.
+       $ mkfs /dev/md0 -t ext4
+
+Note: mkfs OPTION -t --type type
+                            Specify the type of filesystem to be built.
+                            If not specified, the default filesystem type
+                            (currently ext2) is used.
+
+Note:
+If you reboot the Raspberry Pi now, the RAID1 will not start or mount automatically.
+
+Do a manual start and mount.
+
+
+Note:
+If you mistakenly try to create the RAID1 again, this is what you will see.
+You should abort the re-creation of the RAID1.
+
+      $ sudo mdadm -Cv /dev/md0 -l1 -n2 /dev/sda1 /dev/sdb1
+mdadm: /dev/sda1 appears to be part of a raid array:
+       level=raid1 devices=2 ctime=Wed Aug 24 16:14:44 2016
+mdadm: Note: this array has metadata at the start and
+    may not be suitable as a boot device.  If you plan to
+    store '/boot' on this device please ensure that
+    your boot-loader understands md/v1.x metadata, or use
+    --metadata=0.90
+mdadm: /dev/sdb1 appears to be part of a raid array:
+       level=raid1 devices=2 ctime=Wed Aug 24 16:14:44 2016
+mdadm: size set to 1953382464K
+mdadm: automatically enabling write-intent bitmap on large array
+Continue creating array? n
+mdadm: create aborted.
+
+Take a look at configuration file /etc/mdadm/mdadm.conf
+      $ cat /etc/mdadm/mdadm.conf
+# mdadm.conf
+#
+# Please refer to mdadm.conf(5) for information about this file.
+#
+
+# by default (built-in), scan all partitions (/proc/partitions) and all
+# containers for MD superblocks. alternatively, specify devices to scan, using
+# wildcards if desired.
+#DEVICE partitions containers
+
+# auto-create devices with Debian standard permissions
+CREATE owner=root group=disk mode=0660 auto=yes
+
+# automatically tag new arrays as belonging to the local system
+HOMEHOST <system>
+
+# instruct the monitoring daemon where to send mail alerts
+MAILADDR root
+
+# definitions of existing MD arrays
+
+# This configuration was auto-generated on Wed, 24 Aug 2016 03:32:54 +0000 by mkconf
+
+Assemble the RAID1 array since it has already been created.
+This command will scan for hard disk drives which are already part of a RAID
+and then assemble those drives as a RAID. Then it will start the RAID.
+      $ sudo mdadm -A -s
+mdadm: /dev/md/0 has been started with 2 drives.
+
+Note: OPTION -A assemble the array
+             -s scan for existing created arrays.
+
+
+      $ sudo mdadm --query /dev/md0
+/dev/md0: 1862.89GiB raid1 2 devices, 0 spares. Use mdadm --detail for more detail.
+
+      $ sudo mdadm --detail /dev/md0
+/dev/md0:
+        Version : 1.2
+  Creation Time : Wed Aug 24 16:14:44 2016
+     Raid Level : raid1
+     Array Size : 1953382464 (1862.89 GiB 2000.26 GB)
+  Used Dev Size : 1953382464 (1862.89 GiB 2000.26 GB)
+   Raid Devices : 2
+  Total Devices : 2
+    Persistence : Superblock is persistent
+
+  Intent Bitmap : Internal
+
+    Update Time : Thu Aug 25 09:17:25 2016
+          State : clean, resyncing (PENDING)
+ Active Devices : 2
+Working Devices : 2
+ Failed Devices : 0
+  Spare Devices : 0
+
+           Name : ginger:0  (local to host ginger)
+           UUID : c144d003:dcd76db2:94179a50:82253707
+         Events : 12228
+
+    Number   Major   Minor   RaidDevice State
+       0       8        1        0      active sync   /dev/sda1
+       1       8       17        1      active sync   /dev/sdb1
+
+      $ cat /proc/mdstat
+Personalities : [raid1]
+md0 : active (auto-read-only) raid1 sda1[0] sdb1[1]
+      1953382464 blocks super 1.2 [2/2] [UU]
+      	resync=PENDING
+      bitmap: 7/15 pages [28KB], 65536KB chunk
+
+unused devices: <none>
+
+      $ sudo mkdir /mnt/RAID1
+
+      $ sudo mount /dev/md0 /mnt/RAID1/
+
+      $ df -hT -x tmpfs -x devtmpfs
+Filesystem       Type  Size  Used Avail Use% Mounted on
+/dev/root        ext4   30G  3.7G   25G  14% /
+/dev/mmcblk0p1   vfat   63M   21M   43M  33% /boot
+//ginger/public cifs  915G  431G  439G  50% /mnt/ginger/public
+//ginger/robert cifs  915G  431G  439G  50% /mnt/ginger/robert
+/dev/md0         ext4  1.8T   68M  1.7T   1% /mnt/RAID1
+
+
+=========================================================================
+
+HOW-TO Add a new HDD if old one fails.
+The file server RAID-1 has only one working drive.
+
+=========================================================================
+
+Existing status of RAID-1 /dev/MD0 with only a single disk active.
+Active disk is /dev/sda1. Removed disk is /dev/sdb1
+
+$ sudo mdadm --detail /dev/md0
+/dev/md0:
+        Version : 1.2
+  Creation Time : Wed Aug 24 16:14:44 2016
+     Raid Level : raid1
+     Array Size : 1953382464 (1862.89 GiB 2000.26 GB)
+  Used Dev Size : 1953382464 (1862.89 GiB 2000.26 GB)
+   Raid Devices : 2
+  Total Devices : 1
+    Persistence : Superblock is persistent
+
+  Intent Bitmap : Internal
+
+    Update Time : Sun Aug  1 19:37:24 2021
+          State : clean, degraded
+ Active Devices : 1
+Working Devices : 1
+ Failed Devices : 0
+  Spare Devices : 0
+
+           Name : ginger:0  (local to host ginger)
+           UUID : c144d003:dcd76db2:94179a50:82253707
+         Events : 672800
+
+    Number   Major   Minor   RaidDevice State
+       0       8        1        0      active sync   /dev/sda1
+       2       0        0        2      removed
+
+$ cat /proc/mdstat
+Personalities : [raid1]
+md0 : active raid1 sda1[0]
+      1953382464 blocks super 1.2 [2/1] [U_]
+      bitmap: 14/15 pages [56KB], 65536KB chunk
+
+unused devices: <none>
+
+Now add the removed disk /dev/sdb1 back into the RAID-1 array.
+
+$ sudo mdadm --remove /dev/md0 /dev/sdb1
+mdadm: hot remove failed for /dev/sdb1: No such device or address
+
+$ sudo mdadm --add /dev/md0 /dev/sdb1
+mdadm: re-added /dev/sdb1
+
+$ sudo mdadm --detail /dev/md0
+/dev/md0:
+        Version : 1.2
+  Creation Time : Wed Aug 24 16:14:44 2016
+     Raid Level : raid1
+     Array Size : 1953382464 (1862.89 GiB 2000.26 GB)
+  Used Dev Size : 1953382464 (1862.89 GiB 2000.26 GB)
+   Raid Devices : 2
+  Total Devices : 2
+    Persistence : Superblock is persistent
+
+  Intent Bitmap : Internal
+
+    Update Time : Sun Aug  1 21:25:54 2021
+          State : clean, degraded, recovering
+ Active Devices : 1
+Working Devices : 2
+ Failed Devices : 0
+  Spare Devices : 1
+
+ Rebuild Status : 0% complete
+
+           Name : ginger:0  (local to host ginger)
+           UUID : c144d003:dcd76db2:94179a50:82253707
+         Events : 672818
+
+    Number   Major   Minor   RaidDevice State
+       0       8        1        0      active sync   /dev/sda1
+       1       8       17        1      spare rebuilding   /dev/sdb1
+
+$ sudo mdadm --detail /dev/md0
+/dev/md0:
+        Version : 1.2
+  Creation Time : Wed Aug 24 16:14:44 2016
+     Raid Level : raid1
+     Array Size : 1953382464 (1862.89 GiB 2000.26 GB)
+  Used Dev Size : 1953382464 (1862.89 GiB 2000.26 GB)
+   Raid Devices : 2
+  Total Devices : 2
+    Persistence : Superblock is persistent
+
+  Intent Bitmap : Internal
+
+    Update Time : Mon Aug  2 01:49:17 2021
+          State : clean, degraded, recovering
+ Active Devices : 1
+Working Devices : 2
+ Failed Devices : 0
+  Spare Devices : 1
+
+ Rebuild Status : 95% complete
+
+           Name : ginger:0  (local to host ginger)
+           UUID : c144d003:dcd76db2:94179a50:82253707
+         Events : 675990
+
+    Number   Major   Minor   RaidDevice State
+       0       8        1        0      active sync   /dev/sda1
+       1       8       17        1      spare rebuilding   /dev/sdb1
+
+
+21:25-01:49 4 hours and 24 minutes later, the rebuilding of the array is 95% complete.
+
+$ sudo mdadm --detail /dev/md0
+/dev/md0:
+        Version : 1.2
+  Creation Time : Wed Aug 24 16:14:44 2016
+     Raid Level : raid1
+     Array Size : 1953382464 (1862.89 GiB 2000.26 GB)
+  Used Dev Size : 1953382464 (1862.89 GiB 2000.26 GB)
+   Raid Devices : 2
+  Total Devices : 2
+    Persistence : Superblock is persistent
+
+  Intent Bitmap : Internal
+
+    Update Time : Mon Aug  2 02:30:23 2021
+          State : clean
+ Active Devices : 2
+Working Devices : 2
+ Failed Devices : 0
+  Spare Devices : 0
+
+           Name : ginger:0  (local to host ginger)
+           UUID : c144d003:dcd76db2:94179a50:82253707
+         Events : 676482
+
+    Number   Major   Minor   RaidDevice State
+       0       8        1        0      active sync   /dev/sda1
+       1       8       17        1      active sync   /dev/sdb1
+
+
+This is what the status looks like when array rebuild is complete.
+the file server had a broken RAID-1
+
+$ sudo mdadm --detail /dev/md0
+/dev/md0:
+           Version : 1.2
+        Raid Level : raid1
+     Total Devices : 2
+       Persistence : Superblock is persistent
+
+             State : inactive
+   Working Devices : 2
+
+              Name : ginger:0  (local to host ginger)
+              UUID : e6fc6c1d:65f7ef09:f2d37fe3:fa1a5192
+            Events : 49582
+
+    Number   Major   Minor   RaidDevice
+
+       -       8        1        -        /dev/sda1
+       -       8       17        -        /dev/sdb1
+
+
+=========================================================================
+HOW-TO Solve mount error: "can't read superblock"
+SOLVED: Set up new file server, install mdadm, create new RAID-1.
+
+The next morning, when I rebooted the file server it gave the error below:
+
+$ sudo mount /dev/md0 /mnt/ginger/RAID/
+mount: /dev/md0: can't read superblock
+
+I took the broken RAID off of the Raspberry Pi 3 file server and plugged it
+into a Raspberry Pi 4 but the file server does not have application mdadm
+installed nor has any RAID been set up.
+
+=========================================================================
+
+$ lsblk
+NAME        MAJ:MIN RM   SIZE RO TYPE MOUNTPOINT
+sda           8:0    0   4.5T  0 disk
+`-sda1        8:1    0   4.5T  0 part
+sdb           8:16   0   4.5T  0 disk
+`-sdb1        8:17   0   4.5T  0 part
+mmcblk0     179:0    0 116.5G  0 disk
+|-mmcblk0p1 179:1    0   256M  0 part /boot
+`-mmcblk0p2 179:2    0 116.2G  0 part /
+
+$ mdadm --detail /dev/md0
+bash: mdadm: command not found
+
+$ sudo apt install mdadm
+Reading package lists... Done
+Building dependency tree... Done
+Reading state information... Done
+Suggested packages:
+  dracut-core
+The following NEW packages will be installed:
+  mdadm
+0 upgraded, 1 newly installed, 0 to remove and 0 not upgraded.
+Need to get 432 kB of archives.
+After this operation, 1,240 kB of additional disk space will be used.
+Get:1 http://deb.debian.org/debian bullseye/main arm64 mdadm arm64 4.1-11 [432 kB]
+Fetched 432 kB in 0s (1,740 kB/s)
+Preconfiguring packages ...
+Selecting previously unselected package mdadm.
+(Reading database ... 140371 files and directories currently installed.)
+Preparing to unpack .../mdadm_4.1-11_arm64.deb ...
+Unpacking mdadm (4.1-11) ...
+Setting up mdadm (4.1-11) ...
+Generating mdadm.conf... done.
+update-initramfs: deferring update (trigger activated)
+update-rc.d: warning: start and stop actions are no longer supported; falling ba
+ck to defaults
+Processing triggers for man-db (2.9.4-2) ...
+Processing triggers for initramfs-tools (0.140) ...
+
+$ sudo mdadm --detail /dev/md0
+mdadm: cannot open /dev/md0: No such file or directory
+
+$ df -hT
+Filesystem     Type      Size  Used Avail Use% Mounted on
+/dev/root      ext4      115G   19G   92G  17% /
+devtmpfs       devtmpfs  1.6G     0  1.6G   0% /dev
+tmpfs          tmpfs     1.9G     0  1.9G   0% /dev/shm
+tmpfs          tmpfs     745M  3.1M  742M   1% /run
+tmpfs          tmpfs     5.0M  4.0K  5.0M   1% /run/lock
+/dev/mmcblk0p1 vfat      255M   31M  225M  13% /boot
+tmpfs          tmpfs     373M   36K  373M   1% /run/user/1000
+
+$ sudo mdadm -Cv /dev/md0 -l1 -n2 /dev/sda1 /dev/sdb1
+mdadm: /dev/sda1 appears to contain an ext2fs file system
+       size=4883735552K  mtime=Wed Dec 31 19:00:00 1969
+mdadm: /dev/sda1 appears to be part of a raid array:
+       level=raid1 devices=2 ctime=Tue Oct 31 00:52:11 2023
+mdadm: Note: this array has metadata at the start and
+    may not be suitable as a boot device.  If you plan to
+    store '/boot' on this device please ensure that
+    your boot-loader understands md/v1.x metadata, or use
+    --metadata=0.90
+mdadm: /dev/sdb1 appears to contain an ext2fs file system
+       size=4883735552K  mtime=Wed Dec 31 19:00:00 1969
+mdadm: /dev/sdb1 appears to be part of a raid array:
+       level=raid1 devices=2 ctime=Tue Oct 31 00:52:11 2023
+mdadm: size set to 4883603456K
+mdadm: automatically enabling write-intent bitmap on large array
+Continue creating array? y
+mdadm: Defaulting to version 1.2 metadata
+mdadm: array /dev/md0 started.
+
+$ sudo mdadm --detail /dev/md0
+/dev/md0:
+           Version : 1.2
+     Creation Time : Sun Jan 21 12:14:48 2024
+        Raid Level : raid1
+        Array Size : 4883603456 (4657.37 GiB 5000.81 GB)
+     Used Dev Size : 4883603456 (4657.37 GiB 5000.81 GB)
+      Raid Devices : 2
+     Total Devices : 2
+       Persistence : Superblock is persistent
+
+     Intent Bitmap : Internal
+
+       Update Time : Sun Jan 21 12:16:24 2024
+             State : clean, resyncing
+    Active Devices : 2
+   Working Devices : 2
+    Failed Devices : 0
+     Spare Devices : 0
+
+Consistency Policy : bitmap
+
+     Resync Status : 0% complete
+
+              Name : ginger:0  (local to host ginger)
+              UUID : 6a152773:f5e31745:c2616953:9b9e42a6
+            Events : 20
+
+    Number   Major   Minor   RaidDevice State
+       0       8        1        0      active sync   /dev/sda1
+       1       8       17        1      active sync   /dev/sdb1
+
+$ sudo mkdir -p /mnt/ginger/RAID
+
+$ sudo mount /dev/md0 /mnt/ginger/RAID/
+
+$ df -hT -x tmpfs -x devtmpfs
+Filesystem     Type  Size  Used Avail Use% Mounted on
+/dev/root      ext4  115G   19G   92G  17% /
+/dev/mmcblk0p1 vfat  255M   31M  225M  13% /boot
+/dev/md0       ext4  4.6T  1.4T  3.0T  32% /mnt/ginger/RAID
+
+Note:
+It will take many hours for the RAID-1 to be resynced so that the two disks
+will be complete mirrors of one another.
+
+
+=========================================================================
+
+How to disassemble a RAID and reuse the storage devices as individual ones.
+
+=========================================================================
+
+$ lsblk
+NAME    MAJ:MIN RM   SIZE RO TYPE  MOUNTPOINTS
+sda       8:0    0 238.5G  0 disk
+├─sda1    8:1    0     1M  0 part
+├─sda2    8:2    0   513M  0 part  /boot/efi
+└─sda3    8:3    0   238G  0 part  /
+sdb       8:16   0   4.5T  0 disk
+└─sdb1    8:17   0   4.5T  0 part
+  └─md0   9:0    0   4.5T  0 raid1 /mnt/ginger/RAID
+sdc       8:32   0   4.5T  0 disk
+└─sdc1    8:33   0   4.5T  0 part
+  └─md0   9:0    0   4.5T  0 raid1 /mnt/ginger/RAID
+sr0      11:0    1  1024M  0 rom
+
+$ sudo mdadm --detail /dev/md0
+/dev/md0:
+           Version : 1.2
+     Creation Time : Tue Jan 30 14:25:24 2024
+        Raid Level : raid1
+        Array Size : 4883603456 (4.55 TiB 5.00 TB)
+     Used Dev Size : 4883603456 (4.55 TiB 5.00 TB)
+      Raid Devices : 2
+     Total Devices : 2
+       Persistence : Superblock is persistent
+
+     Intent Bitmap : Internal
+
+       Update Time : Tue Jan 30 21:19:39 2024
+             State : clean, degraded, recovering
+    Active Devices : 1
+   Working Devices : 2
+    Failed Devices : 0
+     Spare Devices : 1
+
+Consistency Policy : bitmap
+
+    Rebuild Status : 3% complete
+
+              Name : ginger:0  (local to host ginger)
+              UUID : f88dbe6a:8dbfbd4d:c404d383:be0cc06a
+            Events : 3465
+
+    Number   Major   Minor   RaidDevice State
+       0       8       17        0      active sync   /dev/sdb1
+       1       8       33        1      spare rebuilding   /dev/sdc1
+
+
+$ sudo mdadm --stop /dev/md0
+mdadm: stopped /dev/md0
+
+$ sudo mdadm --zero-superblock /dev/sdb1
+
+$ sudo mdadm --zero-superblock /dev/sdc1
+
+$ lsblk
+NAME   MAJ:MIN RM   SIZE RO TYPE MOUNTPOINTS
+sda      8:0    0 238.5G  0 disk
+├─sda1   8:1    0     1M  0 part
+├─sda2   8:2    0   513M  0 part /boot/efi
+└─sda3   8:3    0   238G  0 part /
+sdb      8:16   0   4.5T  0 disk
+└─sdb1   8:17   0   4.5T  0 part
+sdc      8:32   0   4.5T  0 disk
+└─sdc1   8:33   0   4.5T  0 part
+sr0     11:0    1  1024M  0 rom
+
+$ sudo fdisk --list
+
+Disk /dev/sda: 238.47 GiB, 256060514304 bytes, 500118192 sectors
+Disk model: KingFast
+Units: sectors of 1 * 512 = 512 bytes
+Sector size (logical/physical): 512 bytes / 512 bytes
+I/O size (minimum/optimal): 512 bytes / 512 bytes
+Disklabel type: gpt
+Disk identifier: 7C4ADD83-4F3D-43CF-9A52-46ABE91D621C
+
+Device       Start       End   Sectors  Size Type
+/dev/sda1     2048      4095      2048    1M BIOS boot
+/dev/sda2     4096   1054719   1050624  513M EFI System
+/dev/sda3  1054720 500117503 499062784  238G Linux filesystem
+
+
+Disk /dev/sdb: 4.55 TiB, 5000947302400 bytes, 9767475200 sectors
+Disk model: Game Drive
+Units: sectors of 1 * 512 = 512 bytes
+Sector size (logical/physical): 512 bytes / 4096 bytes
+I/O size (minimum/optimal): 4096 bytes / 4096 bytes
+Disklabel type: gpt
+Disk identifier: 8D88281A-0D7A-46DE-A468-D1A942C48BBE
+
+Device     Start        End    Sectors  Size Type
+/dev/sdb1   2048 9767473151 9767471104  4.5T Linux filesystem
+
+
+Disk /dev/sdc: 4.55 TiB, 5000947302400 bytes, 9767475200 sectors
+Disk model: Game Drive
+Units: sectors of 1 * 512 = 512 bytes
+Sector size (logical/physical): 512 bytes / 4096 bytes
+I/O size (minimum/optimal): 4096 bytes / 4096 bytes
+Disklabel type: gpt
+Disk identifier: 8A857FD8-9C43-417E-83C5-0959AF5F182F
+
+Device     Start        End    Sectors  Size Type
+/dev/sdc1   2048 9767473151 9767471104  4.5T Linux filesystem
+
+$ sudo gdisk -l /dev/sdb1
+GPT fdisk (gdisk) version 1.0.8
+
+Partition table scan:
+  MBR: not present
+  BSD: not present
+  APM: not present
+  GPT: not present
+
+Creating new GPT entries in memory.
+Disk /dev/sdb1: 9767471104 sectors, 4.5 TiB
+Sector size (logical/physical): 512/4096 bytes
+Disk identifier (GUID): B30F2222-45F3-427D-AD0C-F3E82764F83B
+Partition table holds up to 128 entries
+Main partition table begins at sector 2 and ends at sector 33
+First usable sector is 34, last usable sector is 9767471070
+Partitions will be aligned on 2048-sector boundaries
+Total free space is 9767471037 sectors (4.5 TiB)
+
+Number  Start (sector)    End (sector)  Size       Code  Name
+
+$ sudo gdisk -l /dev/sdc1
+GPT fdisk (gdisk) version 1.0.8
+
+Partition table scan:
+  MBR: not present
+  BSD: not present
+  APM: not present
+  GPT: not present
+
+Creating new GPT entries in memory.
+Disk /dev/sdc1: 9767471104 sectors, 4.5 TiB
+Sector size (logical/physical): 512/4096 bytes
+Disk identifier (GUID): 1222A0BF-CB72-4D66-A852-9501AA396280
+Partition table holds up to 128 entries
+Main partition table begins at sector 2 and ends at sector 33
+First usable sector is 34, last usable sector is 9767471070
+Partitions will be aligned on 2048-sector boundaries
+Total free space is 9767471037 sectors (4.5 TiB)
+
+Number  Start (sector)    End (sector)  Size       Code  Name
+
+Conclusion:
+
+What solved the issue was when the file server recreated the array using command:
+sudo mdadm -Cv /dev/md0 -l1 -n2 /dev/sda1 /dev/sdb1
+
+man mdadm
+       -C, --create
+              Create a new array.
+
+       -v, --verbose
+              Be more verbose about what is happening.  This can be used twice
+              to be extra-verbose.  The extra verbosity currently only affects
+              --detail --scan and --examine –scan.
+
+       -l, --level=
+              Set  RAID  level.  When used with --create, options are: linear,
+              raid0, 0, stripe, raid1, 1, mirror, raid4, 4, raid5,  5,  raid6,
+              6, raid10, 10, multipath, mp, faulty, container.  Obviously some
+              of these are synonymous.
+
+              When a CONTAINER metadata type is requested, only the  container
+              level is permitted, and it does not need to be explicitly given.
+
+              When  used  with  --build, only linear, stripe, raid0, 0, raid1,
+              multipath, mp, and faulty are valid.
+
+              Can be used with --grow to change the RAID level in some  cases.
+              See LEVEL CHANGES below.
+
+       -n, --raid-devices=
+              Specify  the  number of active devices in the array.  This, plus
+              the number of spare devices (see below) must equal the number of
+              component-devices  (including "missing" devices) that are listed
+              on the command line for --create.  Setting a value of 1 is prob-
+              ably  a mistake and so requires that --force be specified first.
+              A value of 1 will then be allowed for linear,  multipath,  RAID0
+              and RAID1.  It is never allowed for RAID4, RAID5 or RAID6.
+              This  number  can only be changed using --grow for RAID1, RAID4,
+              RAID5 and RAID6 arrays, and only on kernels  which  provide  the
+              necessary support.
